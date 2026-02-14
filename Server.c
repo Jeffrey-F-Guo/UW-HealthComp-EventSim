@@ -25,6 +25,8 @@ struct sockaddr_in client_addr;
 socklen_t client_len = sizeof(client_addr);
 int client_fd;
 
+MedicaidPacket packet;
+
 int main() {
     printf("Hello, World!\n");
     init_tcp();
@@ -38,17 +40,23 @@ int main() {
         }
         
         printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
-        // TODO: Handle client in thread_wrapper or pass to recieve_packets
-        uint32_t mlen;
-        recv(client_fd, &mlen, sizeof(mlen), 0);
-        printf("Received message length: %u\n", mlen);
-        char *message = malloc(mlen + 1);
-        recv(client_fd, message, mlen, 0);
-        message[mlen] = '\0'; // null terminate the string
-        printf("Received message: %s\n", message);
-        free(message);
+        while (1) {
+            init_packet_struct(&packet);
+            int n = recv_medicaid_packet(&packet, client_fd);
+
+            if (n < 0) {
+                printf("Client disconnected or error occurred\n");
+                break;
+            }
+
+            printf("[RECV] ID=%u | Zone=%u | Time=%llu | Manual=%u\n",
+                   packet.id, packet.zone, packet.timestamp_ns, packet.manual);
+        
+        }
+
         close(client_fd);
     }
+    
     return 0;
 }
 
@@ -93,21 +101,18 @@ int init_tcp() {
 
 int recieve_packets() {
     // multiplexed receiving from office clients w/ poll
+    return 0;
 }
 
 int thread_wrapper() {
     // thread wrapper. Simulates central HCA
+        return 0;
+
 }
 
 int simulate_worker() {
     // thread function. Simulates HCA worker processing a document
-}
-
-
-int safe_send() {
+        return 0;
 
 }
 
-int safe_recv() {
-
-}
