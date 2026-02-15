@@ -6,9 +6,13 @@
 # include <arpa/inet.h>
 # include <unistd.h>
 # include <stdlib.h>
+# include <pthread.h>
+# include <time.h>
+
 # include "Server.h"
-# include "Medicaid.h"
-#define QLEN 5 
+#define BACKLOG 6 
+#define NUMWORKERS 10
+#define PACKET_EXPIRATION_MS 10000 // 1 second in milliseconds
 /*
     Server code to simulate the HCA. represents state processing of renewals
     global queue receives packets from clients
@@ -25,12 +29,28 @@ struct sockaddr_in client_addr;
 socklen_t client_len = sizeof(client_addr);
 int client_fd;
 
-MedicaidPacket packet;
+
+Queue q;
+ServerReport report;
 
 int main() {
     printf("Hello, World!\n");
-    init_tcp();
-
+    if (init_tcp() < 0) {
+        fprintf(stderr, "Failed to initialize TCP\n");
+        exit(EXIT_FAILURE);
+    }
+    if (init_queue(&q) < 0) {
+        fprintf(stderr, "Failed to initialize queue\n");
+        exit(EXIT_FAILURE);
+    }
+    init_report_struct(&report);
+    pthread_t threads[NUMWORKERS];
+    for (int i = 0; i < NUMWORKERS; i++) {
+        if (pthread_create(&threads[i], NULL, simulate_worker, NULL) != 0) {
+            perror("pthread_create");
+            exit(EXIT_FAILURE);
+        }
+    }
     // Accept incoming client connections
     while (1) {
         client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
@@ -40,7 +60,10 @@ int main() {
         }
         
         printf("Client connected from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        int count = 0;
+
         while (1) {
+            MedicaidPacket packet;
             init_packet_struct(&packet);
             int n = recv_medicaid_packet(&packet, client_fd);
 
@@ -50,13 +73,25 @@ int main() {
             }
 
             printf("[RECV] ID=%u | Zone=%u | Time=%llu | Manual=%u\n",
-                   packet.id, packet.zone, packet.timestamp_ns, packet.manual);
-        
+                   packet.id, packet.zone, packet.timestamp_ms, packet.manual);
+
+            enqueue(&q, packet);
+            report.current_queue_len = /*htonl*/(q.count); // Use your actual queue variable
+            if (count % 100 == 0) {
+                printf("Received %d packets\n", count);
+                printf("Queue length: %d\n", q.count);
+                printf("============================================\n");
+
+            }
+            count++;
         }
 
         close(client_fd);
     }
-    
+    for (int i = 0; i < NUMWORKERS; i++) {
+        pthread_join(threads[i], NULL);
+    }
+    cleanup_queue(&q);
     return 0;
 }
 
@@ -89,7 +124,7 @@ int init_tcp() {
     }
     
     // Listen for incoming connections
-    if (listen(server_fd, QLEN) < 0) {
+    if (listen(server_fd, BACKLOG) < 0) {
         perror("listen");
         return -1;
     }
@@ -104,15 +139,48 @@ int recieve_packets() {
     return 0;
 }
 
-int thread_wrapper() {
-    // thread wrapper. Simulates central HCA
-        return 0;
 
-}
 
-int simulate_worker() {
+void *simulate_worker(void *arg) {
     // thread function. Simulates HCA worker processing a document
-        return 0;
+
+    // grab from queue
+    // This is a consumer problem
+    while(1) {
+        MedicaidPacket packet = dequeue(&q);
+        uint64_t start_time = get_current_timestamp_ms();
+        uint64_t wait_time = start_time - packet.timestamp_ms;
+        // Check if timestamp still valid
+        if (wait_time > PACKET_EXPIRATION_MS) { // If wait time is more than 10 seconds, discard packet
+            printf("Discarding stale packet with ID %u\n", packet.id);
+            pthread_mutex_lock(&q.lock);
+            report.total_dropped++;
+            pthread_mutex_unlock(&q.lock);
+            continue;
+        }
+
+        // delay to simulate packet being processed. depends on complexity
+        process_packet(packet);
+        // measure time
+        uint64_t end_time = get_current_timestamp_ms();
+        uint64_t total_time = end_time - start_time;
+        printf("Packet %u processed in %llu ms\n", packet.id, total_time);
+    }
+    return NULL;
 
 }
 
+int process_packet(MedicaidPacket packet) {
+    // Simulate a packet being processed by the HCA
+    int process_time_ms = (packet.manual ? 1000 : 300) * packet.complexity; // Simulate processing time in milliseconds
+    usleep(process_time_ms * 1000); // Sleep for the simulated processing time in microseconds
+    return 0;
+}
+
+
+
+uint64_t get_current_timestamp_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (uint64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
