@@ -26,11 +26,12 @@ int main() {
 
 
 int send_packet(int client_fd) {
-    char message[] = "Hello from client!";
-    uint32_t mlen = sizeof(message) - 1;
-    printf("Sending packet of length %u\n", mlen);
-    send(client_fd, &mlen, sizeof(mlen), 0);
-    send(client_fd, message, strlen(message), 0);
+    MedicaidPacket packet = create_medicaid_packet(1, 2, 1234567890, 5, 1);
+    int result = send_medicaid_packet(&packet, client_fd);
+    if (result < 0) {
+        perror("Failed to send Medicaid packet");
+        return -1;
+    }
     while(1) {
         // spin
     }
