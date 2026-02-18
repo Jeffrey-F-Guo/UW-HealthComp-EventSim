@@ -7,8 +7,8 @@ int enqueue(Queue *q, MedicaidPacket packet) {
         return -1;
     }
     q->count++;
-    q->packets[q->head] = packet;
-    q->head = (q->head + 1) % Q_SIZE;
+    q->packets[q->tail] = packet;
+    q->tail = (q->tail + 1) % Q_SIZE;
 
     pthread_cond_signal(&q->not_empty);
     pthread_mutex_unlock(&q->lock);
@@ -24,8 +24,8 @@ MedicaidPacket dequeue(Queue *q) {
     }
 
     q->count--;
-    packet = q->packets[q->tail];
-    q->tail = (q->tail + 1) % Q_SIZE;
+    packet = q->packets[q->head];
+    q->head = (q->head + 1) % Q_SIZE;
 
     pthread_mutex_unlock(&q->lock);
     return packet;

@@ -1,7 +1,7 @@
 # include "Medicaid.h"
 #include <pthread.h>
 #include <stdlib.h>
-#define Q_SIZE 10000
+#define Q_SIZE 100000
 
 
 typedef struct {
