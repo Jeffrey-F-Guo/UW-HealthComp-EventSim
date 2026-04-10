@@ -1,3 +1,5 @@
 .venv
 .env
 *.o
+/node_modules
+/dist
