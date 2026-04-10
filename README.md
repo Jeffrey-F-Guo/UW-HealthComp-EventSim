@@ -2,6 +2,8 @@
 
 A discrete-event simulation of Washington State's Medicaid renewal pipeline, built to model how staffing levels, case complexity, and automation tools affect processing throughput and procedural denials.
 
+![OBBAS Policy Impact Simulator Dashboard](assets/dashboard.png)
+
 ## Motivation
 
 Each year, thousands of Medicaid enrollees lose coverage not because they are ineligible, but because their renewal paperwork expires in a backlogged queue — a **procedural denial**. This simulator models the HCA (Health Care Authority) renewal pipeline as a queuing system, letting users stress-test different scenarios: surge volumes from specific offices, high-complexity caseloads, or reduced automation (manual processing), and observe in real time where the system breaks down.
