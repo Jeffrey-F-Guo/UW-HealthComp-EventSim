@@ -18,8 +18,10 @@ int init_report_struct(ServerReport* report) {
     }
     memset(report, 0, sizeof(ServerReport));
     report->current_queue_len = 0;
-    report->total_dropped = 0;
+    report->total_dropped_time = 0;
+    report->total_dropped_full = 0;
     report->avg_latency_ms = 0;
+    report->total_processed = 0;
     return 0;
 }
 uint64_t my_htonll(uint64_t val) {

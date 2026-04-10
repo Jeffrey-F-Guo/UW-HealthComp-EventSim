@@ -1,5 +1,5 @@
 #include "Queue.h"
-
+#include <stdio.h>
 int enqueue(Queue *q, MedicaidPacket packet) {
     pthread_mutex_lock(&q->lock);
     if (q->count >= Q_SIZE) {

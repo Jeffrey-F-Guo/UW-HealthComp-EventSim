@@ -12,10 +12,10 @@
 # include "Server.h"
 #define BACKLOG 6 
 #define NUMWORKERS 10
-#define PACKET_EXPIRATION_MS 100000 // 3 seconds in milliseconds
+#define PACKET_EXPIRATION_MS 60000 // 60 seconds in milliseconds
 
 #define BRIDGE_METRICS_PORT 5050
-#define METRICS_REPORT_INTERVAL_MS 1000 // Send metrics every 1 second
+#define METRICS_REPORT_INTERVAL_MS 1000 // Send metrics every second
 #define PACKET_PORT 8080
 /*
     Server code to simulate the HCA. represents state processing of renewals
@@ -96,7 +96,12 @@ void *handle_client_connection(void *arg) {
         // printf("[RECV] ID=%u | Zone=%u | Time=%llu | Manual=%u\n",
         //         packet.id, packet.zone, packet.timestamp_ms, packet.manual);
 
-        enqueue(&q, packet);
+        if (enqueue(&q, packet) < 0) {
+            printf("Failed to enqueue packet with ID %u from zone %u\n", packet.id, packet.zone);
+            pthread_mutex_lock(&q.lock);
+            report.total_dropped_full++;
+            pthread_mutex_unlock(&q.lock);
+        }
         
     }
     close(client_fd);
@@ -114,9 +119,9 @@ void *simulate_worker(void *arg) {
         uint64_t wait_time = start_time - packet.timestamp_ms;
         // Check if timestamp still valid
         if (wait_time > PACKET_EXPIRATION_MS) { // If wait time is more than 10 seconds, discard packet
-            printf("Discarding stale packet with ID %u from zone %u\n", packet.id, packet.zone);
+            // printf("Discarding stale packet with ID %u from zone %u\n", packet.id, packet.zone);
             pthread_mutex_lock(&q.lock);
-            report.total_dropped++;
+            report.total_dropped_time++;
             pthread_mutex_unlock(&q.lock);
             continue;
         }
@@ -130,9 +135,10 @@ void *simulate_worker(void *arg) {
 
         pthread_mutex_lock(&q.lock);
         report.avg_latency_ms = calculate_ema(total_time, report.avg_latency_ms);
+        report.total_processed++;
         pthread_mutex_unlock(&q.lock);
                 
-        printf("Packet %u from zone %u processed in %llu ms\n", packet.id, packet.zone, total_time);
+        // printf("Packet %u from zone %u processed in %llu ms\n", packet.id, packet.zone, total_time);
 
     }
     return NULL;
@@ -155,22 +161,28 @@ void *send_metrics(void *arg) {
             continue;
         }
 
-        uint8_t buffer[12];
+        uint8_t buffer[sizeof(ServerReport)];
         while (1) {
             // send a report package to client
             pthread_mutex_lock(&q.lock);
             uint32_t queue_net = htonl(q.count);
-            uint32_t dropped_net = htonl(report.total_dropped);
+            uint32_t dropped_timeout_net = htonl(report.total_dropped_time);
+            uint32_t dropped_full_net = htonl(report.total_dropped_full);
             uint32_t latency_net = htonl(report.avg_latency_ms);
+            uint32_t processed_net = htonl(report.total_processed);
             pthread_mutex_unlock(&q.lock);
 
             uint8_t *ptr = buffer;
             memcpy(ptr, &queue_net, sizeof(uint32_t));
             ptr += sizeof(uint32_t);
-            memcpy(ptr, &dropped_net, sizeof(uint32_t));
+            memcpy(ptr, &dropped_timeout_net, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
+            memcpy(ptr, &dropped_full_net, sizeof(uint32_t));
             ptr += sizeof(uint32_t);
             memcpy(ptr, &latency_net, sizeof(uint32_t));
-
+            ptr += sizeof(uint32_t);
+            memcpy(ptr, &processed_net, sizeof(uint32_t));
+            ptr += sizeof(uint32_t);
 
             if (send(client_bridge_fd, buffer, sizeof(buffer), 0) < 0) {
                 perror("Failed to send report");

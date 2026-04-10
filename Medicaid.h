@@ -16,9 +16,11 @@ typedef struct {
 
 typedef struct {
     uint32_t current_queue_len; // Backlog of cases to process
-    uint32_t total_dropped;     // Total number of cases dropped due to expiration
+    uint32_t total_dropped_time;     // Total number of cases dropped due to expiration
+    uint32_t total_dropped_full;    // Total number of cases dropped due to full queue
     uint32_t avg_latency_ms;    // Running average - represents average medicaid processing time
-} ServerReport; // 12 Bytes
+    uint32_t total_processed;
+} ServerReport; // 20 Bytes
 
 
 int serialize_packet(MedicaidPacket* packet, uint8_t* buffer, size_t buffer_size);

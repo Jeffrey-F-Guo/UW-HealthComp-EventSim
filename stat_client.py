@@ -27,8 +27,10 @@ class OfficeConfig:
 @dataclass
 class ServerReport:
     queue_len: int = 0
-    total_dropped: int = 0
+    total_dropped_time: int = 0
+    total_dropped_full: int = 0
     avg_latency: int = 0
+    total_processed: int = 0
 
 configs = [
     OfficeConfig(zone_id=1, packets_per_sec=8, complexity=3, manual_ratio=0.2),
@@ -114,8 +116,6 @@ class OfficeClient(threading.Thread):
 
                     else:
                         time.sleep(0.1)
-    
-
 
             except BrokenPipeError:
                 print(f"[Zone {self.zone_id}] Server disconnected")
@@ -138,8 +138,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 "type": "METRICS_UPDATE",
                 "payload": {
                     "queue_len": report.queue_len,
-                    "total_dropped": report.total_dropped,
-                    "avg_latency": report.avg_latency
+                    "total_dropped_time": report.total_dropped_time,
+                    "total_dropped_full": report.total_dropped_full,
+                    "avg_latency": report.avg_latency,
+                    "total_processed": report.total_processed
                 }
             })
             
@@ -162,10 +164,11 @@ async def websocket_endpoint(websocket: WebSocket):
             except asyncio.TimeoutError:
                 pass
                 
-            await asyncio.sleep(0.1)
+            # await asyncio.sleep(0.1)
 
     except WebSocketDisconnect:
         print("React client disconnected")
+
 def report_listener():
     while True:
         sock = None
@@ -174,16 +177,18 @@ def report_listener():
             sock.connect((SERVER_IP, REPORT_PORT))
 
             while True:
-                data = sock.recv(12)
+                data = sock.recv(20)
                 if not data:
                     print("Report channel disconnected")
                     break
-                queue, dropped, latency = struct.unpack('>III', data)
+                queue, dropped_timeout, dropped_full, latency, processed = struct.unpack('>IIIII', data)
                 with report_lock:
                     report.queue_len = queue
-                    report.total_dropped = dropped
+                    report.total_dropped_time = dropped_timeout
+                    report.total_dropped_full = dropped_full
                     report.avg_latency = latency
-
+                    report.total_processed = processed
+                    print(f"Report: queue={queue}, dropped_timeout={dropped_timeout}, dropped_full={dropped_full}, latency={latency}, processed={processed}")
         except (ConnectionRefusedError, ConnectionResetError):
             time.sleep(2)
             continue
